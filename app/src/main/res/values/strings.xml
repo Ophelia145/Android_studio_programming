@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">lab1</string>
+        <string name="rules">
+       No rules, my cruel barbarians!
+    </string>
+
 </resources>
