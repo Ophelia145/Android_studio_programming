@@ -1,7 +1,8 @@
 <resources>
     <string name="app_name">lab1</string>
         <string name="rules">
-       No rules, my cruel barbarians!
+            ПРАВИЛА ИГРЫ:
+       За попадание +10 очков, за промах -10
     </string>
 
 </resources>

@@ -1,6 +1,6 @@
 package com.example.lab1
-
 import android.content.Context
+import android.content.res.Resources
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -32,9 +34,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 
 data class Player(
@@ -59,7 +64,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun GameTabs() {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Profile", "Rules", "Author", "Settings")
+    val tabTitles = listOf("Game", "Profile", "Rules", "Author", "Settings")
 
     Column {
         TabRow(selectedTabIndex = selectedTab) {
@@ -73,13 +78,165 @@ fun GameTabs() {
         }
 
         when (selectedTab) {
-            0 -> PlayerForm()
-            1 -> RulesTab()
-            2 -> AuthorsTab()
-            3 -> SettingsTab()
+            0 -> BugsGame()
+            1 -> PlayerForm()
+            2 -> RulesTab()
+            3 -> AuthorsTab()
+            4 -> SettingsTab()
         }
     }
 }
+
+    @Composable
+    fun BugsGame() {
+        val context = LocalContext.current
+        val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
+
+
+        val speed = (prefs.getString("speed", "8") ?: "8").toInt()
+        val maxBugs = (prefs.getString("max_bugs", "10") ?: "10").toInt()
+        val roundDuration = (prefs.getString("round_duration", "60") ?: "60").toInt()
+
+        var score by remember { mutableStateOf(0) }
+        var bugs by remember { mutableStateOf(listOf<Bug>()) }
+        var timeLeft by remember { mutableStateOf(roundDuration) }
+
+
+        LaunchedEffect(Unit) {
+            while (timeLeft > 0) {
+                delay(1000L)
+                timeLeft--
+
+
+                if (bugs.size < maxBugs) {
+                    bugs = bugs + Bug.randomBug()
+                }
+
+
+                bugs = bugs.map { it.move(speed) }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(8.dp)
+        ) {
+
+            bugs.forEach { bug ->
+                Image(
+                    painter = painterResource(id = R.drawable.buglady),
+                    contentDescription = "Bug",
+                    modifier = Modifier
+                        .size(50.dp)
+                        .offset(bug.x.dp, bug.y.dp)
+                        .clickable {
+                            score += 10
+                            bugs = bugs - bug
+
+                        }
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White)
+                    .pointerInput(bugs) {
+                        detectTapGestures { offset ->
+
+                            val clickedBug = bugs.find { bug ->
+                                val density = Resources.getSystem().displayMetrics.density
+                                val bugSizePx = 50 * density
+                                offset.x in bug.x * density..(bug.x * density + bugSizePx) &&
+                                        offset.y in bug.y * density..(bug.y * density + bugSizePx)
+                            }
+
+                            if (clickedBug != null) {
+
+                                bugs = bugs - clickedBug
+                                score += 10
+                            } else {
+
+                                score -= 10
+                            }
+                        }
+                    }
+            ) {
+                bugs.forEach { bug ->
+                    Image(
+                        painter = painterResource(id = R.drawable.buglady),
+                        contentDescription = "Bug",
+                        modifier = Modifier
+                            .size(50.dp)
+                            .offset(bug.x.dp, bug.y.dp)
+                    )
+                }
+
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .background(Color(0xAA000000))
+                        .padding(8.dp)
+                ) {
+                    Text("Очки: $score", color = Color.White)
+                    Text("Время: $timeLeft с", color = Color.White)
+                }
+            }
+
+
+
+        if (timeLeft <= 0) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x88000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Игра окончена!\nОчки: $score",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+
+data class Bug(
+    val x: Float,
+    val y: Float,
+    val dx: Float,
+    val dy: Float
+) {
+    companion object {
+        fun randomBug(): Bug {
+            val randomX = (0..300).random().toFloat()
+            val randomY = (0..500).random().toFloat()
+            val dirX = listOf(-1f, 1f).random()
+            val dirY = listOf(-1f, 1f).random()
+            return Bug(randomX, randomY, dirX, dirY)
+        }
+    }
+
+
+    fun move(speed: Int): Bug {
+        val newX = (x + dx * speed).coerceIn(0f, 320f)
+        val newY = (y + dy * speed).coerceIn(0f, 550f)
+        val newDx = if (newX == 0f || newX == 320f) -dx else dx
+        val newDy = if (newY == 0f || newY == 550f) -dy else dy
+        return copy(x = newX, y = newY, dx = newDx, dy = newDy)
+    }
+
+
+    val xPx get() = x * Resources.getSystem().displayMetrics.density
+    val yPx get() = y * Resources.getSystem().displayMetrics.density
+}
+
 
 
 
@@ -97,7 +254,7 @@ fun AuthorsTab() {
     val authors = listOf(
         Author("Алиса Хайбулаева", R.drawable.me),
 
-    )
+        )
     LazyColumn(modifier = Modifier.padding(16.dp)
         .background(Color(0xFFacbfba))) {
         items(authors) { author ->
@@ -338,21 +495,32 @@ fun PlayerForm() {
     }
 }
 
-
 fun calculateZodiac(day: Int, month: Int): String {
-    return when (month) {
-        1 -> if (day <= 19) "Capricorn" else "Aquarius"
-        2 -> if (day <= 18) "Aquarius" else "Pisces"
-        3 -> if (day <= 20) "Pisces" else "Aries"
-        4 -> if (day <= 19) "Aries" else "Taurus"
-        5 -> if (day <= 20) "Taurus" else "Gemini"
-        6 -> if (day <= 20) "Gemini" else "Cancer"
-        7 -> if (day <= 22) "Cancer" else "Leo"
-        8 -> if (day <= 22) "Leo" else "Virgo"
-        9 -> if (day <= 22) "Virgo" else "Libra"
-        10 -> if (day <= 22) "Libra" else "Scorpio"
-        11 -> if (day <= 21) "Scorpio" else "Sagittarius"
-        12 -> if (day <= 21) "Sagittarius" else "Capricorn"
-        else -> ""
+    return when {
+        month == 1 && day in 1..19 -> "Capricorn"
+        month == 1 && day in 20..31 -> "Aquarius"
+        month == 2 && day in 1..18 -> "Aquarius"
+        month == 2 && day in 19..29 -> "Pisces"
+        month == 3 && day in 1..20 -> "Pisces"
+        month == 3 && day in 21..31 -> "Aries"
+        month == 4 && day in 1..19 -> "Aries"
+        month == 4 && day in 20..30 -> "Taurus"
+        month == 5 && day in 1..20 -> "Taurus"
+        month == 5 && day in 21..31 -> "Gemini"
+        month == 6 && day in 1..20 -> "Gemini"
+        month == 6 && day in 21..30 -> "Cancer"
+        month == 7 && day in 1..22 -> "Cancer"
+        month == 7 && day in 23..31 -> "Leo"
+        month == 8 && day in 1..22 -> "Leo"
+        month == 8 && day in 23..31 -> "Virgo"
+        month == 9 && day in 1..22 -> "Virgo"
+        month == 9 && day in 23..30 -> "Libra"
+        month == 10 && day in 1..22 -> "Libra"
+        month == 10 && day in 23..31 -> "Scorpio"
+        month == 11 && day in 1..21 -> "Scorpio"
+        month == 11 && day in 22..30 -> "Sagittarius"
+        month == 12 && day in 1..21 -> "Sagittarius"
+        month == 12 && day in 22..31 -> "Capricorn"
+        else -> "Unknown"
     }
 }
