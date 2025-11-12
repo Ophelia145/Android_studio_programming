@@ -86,106 +86,88 @@ fun GameTabs() {
         }
     }
 }
+@Composable
+fun BugsGame() {
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
+    val speed = (prefs.getString("speed", "8") ?: "8").toInt()
+    val maxBugs = (prefs.getString("max_bugs", "10") ?: "10").toInt()
+    val roundDuration = (prefs.getString("round_duration", "60") ?: "60").toInt()
+    val sharedPreferences = context.getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+    val savedDifficulty = sharedPreferences.getInt("difficulty", 1)
 
-    @Composable
-    fun BugsGame() {
-        val context = LocalContext.current
-        val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
+    var score by remember { mutableStateOf(0) }
+    var bugs by remember { mutableStateOf(listOf<Bug>()) }
+    var timeLeft by remember { mutableStateOf(roundDuration) }
+
+    val spawnInterval = (2000L / savedDifficulty)
+
+    LaunchedEffect(Unit) {
+        var spawnTime = 0L
+        var timerTime = 0L
+        while (timeLeft > 0) {
+            delay(16L) // ~60 FPS
+            bugs = bugs.map { it.move(speed / 60f) }
 
 
-        val speed = (prefs.getString("speed", "8") ?: "8").toInt()
-        val maxBugs = (prefs.getString("max_bugs", "10") ?: "10").toInt()
-        val roundDuration = (prefs.getString("round_duration", "60") ?: "60").toInt()
-
-        var score by remember { mutableStateOf(0) }
-        var bugs by remember { mutableStateOf(listOf<Bug>()) }
-        var timeLeft by remember { mutableStateOf(roundDuration) }
+            spawnTime += 16L
+            if (spawnTime >= spawnInterval && bugs.size < maxBugs) {
+                bugs = bugs + Bug.randomBug(bugs)
+                spawnTime = 0L
+            }
 
 
-        LaunchedEffect(Unit) {
-            while (timeLeft > 0) {
-                delay(1000L)
+            timerTime += 16L
+            if (timerTime >= 1000L) {
                 timeLeft--
-
-
-                if (bugs.size < maxBugs) {
-                    bugs = bugs + Bug.randomBug()
-                }
-
-
-                bugs = bugs.map { it.move(speed) }
+                timerTime = 0L
             }
         }
+    }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .padding(8.dp)
-        ) {
-
-            bugs.forEach { bug ->
-                Image(
-                    painter = painterResource(id = R.drawable.buglady),
-                    contentDescription = "Bug",
-                    modifier = Modifier
-                        .size(50.dp)
-                        .offset(bug.x.dp, bug.y.dp)
-                        .clickable {
-                            score += 10
-                            bugs = bugs - bug
-
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .background(Color.White)
+        .then(
+            if (timeLeft > 0) {
+                Modifier.pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val density = Resources.getSystem().displayMetrics.density
+                        val clickedBug = bugs.find { bug ->
+                            val bugSizePx = 50 * density
+                            offset.x in bug.x * density..(bug.x * density + bugSizePx) &&
+                                    offset.y in bug.y * density..(bug.y * density + bugSizePx)
                         }
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White)
-                    .pointerInput(bugs) {
-                        detectTapGestures { offset ->
-
-                            val clickedBug = bugs.find { bug ->
-                                val density = Resources.getSystem().displayMetrics.density
-                                val bugSizePx = 50 * density
-                                offset.x in bug.x * density..(bug.x * density + bugSizePx) &&
-                                        offset.y in bug.y * density..(bug.y * density + bugSizePx)
-                            }
-
-                            if (clickedBug != null) {
-
-                                bugs = bugs - clickedBug
-                                score += 10
-                            } else {
-
-                                score -= 10
-                            }
+                        if (clickedBug != null) {
+                            bugs = bugs - clickedBug
+                            score += 10
+                        } else {
+                            score -= 10
                         }
                     }
-            ) {
-                bugs.forEach { bug ->
-                    Image(
-                        painter = painterResource(id = R.drawable.buglady),
-                        contentDescription = "Bug",
-                        modifier = Modifier
-                            .size(50.dp)
-                            .offset(bug.x.dp, bug.y.dp)
-                    )
                 }
+            } else Modifier
+        )
+    ) {
+        bugs.forEach { bug ->
+            Image(
+                painter = painterResource(id = R.drawable.buglady),
+                contentDescription = "Bug",
+                modifier = Modifier
+                    .size(50.dp)
+                    .offset(bug.x.dp, bug.y.dp)
+            )
+        }
 
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .background(Color(0xAA000000))
-                        .padding(8.dp)
-                ) {
-                    Text("Очки: $score", color = Color.White)
-                    Text("Время: $timeLeft с", color = Color.White)
-                }
-            }
-
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .background(Color(0xAA000000))
+                .padding(8.dp)
+        ) {
+            Text("Очки: $score", color = Color.White)
+            Text("Время: $timeLeft с", color = Color.White)
+        }
 
 
         if (timeLeft <= 0) {
@@ -214,23 +196,35 @@ data class Bug(
     val dy: Float
 ) {
     companion object {
-        fun randomBug(): Bug {
-            val randomX = (0..300).random().toFloat()
-            val randomY = (0..500).random().toFloat()
-            val dirX = listOf(-1f, 1f).random()
-            val dirY = listOf(-1f, 1f).random()
-            return Bug(randomX, randomY, dirX, dirY)
+        fun randomBug(existingBugs: List<Bug>): Bug {
+            var newBug: Bug
+            do {
+                val randomX = (0..300).random().toFloat()
+                val randomY = (0..500).random().toFloat()
+                val dirX = listOf(-1f, 1f).random()
+                val dirY = listOf(-1f, 1f).random()
+                newBug = Bug(randomX, randomY, dirX, dirY)
+            } while (existingBugs.any { it.isOverlapping(newBug) })
+            return newBug
         }
+
+        fun Bug.isOverlapping(other: Bug): Boolean {
+            val size = 50f
+            return (x < other.x + size && x + size > other.x &&
+                    y < other.y + size && y + size > other.y)
+        }
+
     }
 
 
-    fun move(speed: Int): Bug {
+    fun move(speed: Float): Bug {
         val newX = (x + dx * speed).coerceIn(0f, 320f)
         val newY = (y + dy * speed).coerceIn(0f, 550f)
         val newDx = if (newX == 0f || newX == 320f) -dx else dx
         val newDy = if (newY == 0f || newY == 550f) -dy else dy
         return copy(x = newX, y = newY, dx = newDx, dy = newDy)
     }
+
 
 
     val xPx get() = x * Resources.getSystem().displayMetrics.density
@@ -272,56 +266,6 @@ fun AuthorsTab() {
 }
 
 data class Author(val name: String, val photoRes: Int)
-
-@Composable
-fun SettingsTab() {
-    val context = LocalContext.current
-    val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
-
-    val savedSpeed = prefs.getString("speed", "5") ?: "5"
-    val savedMaxBugs = prefs.getString("max_bugs", "10") ?: "10"
-    val savedBonusInterval = prefs.getString("bonus_interval", "3") ?: "3"
-    val savedRoundDuration = prefs.getString("round_duration", "60") ?: "60"
-
-    var speed by remember { mutableStateOf(savedSpeed) }
-    var maxBugs by remember { mutableStateOf(savedMaxBugs) }
-    var bonusInterval by remember { mutableStateOf(savedBonusInterval) }
-    var roundDuration by remember { mutableStateOf(savedRoundDuration) }
-
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .background(Color(0xFFacbfba))
-        .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Game Settings", style = MaterialTheme.typography.titleMedium)
-
-        NumberTextField("Game Speed", speed) { speed = it }
-        NumberTextField("Max Bugs on Screen", maxBugs) { maxBugs = it }
-        NumberTextField("Bonus Interval (seconds)", bonusInterval) { bonusInterval = it }
-        NumberTextField("Round Duration (seconds)", roundDuration) { roundDuration = it }
-
-        Button(
-            onClick = {
-                prefs.edit {
-                    putString("speed", speed)
-                    putString("max_bugs", maxBugs)
-                    putString("bonus_interval", bonusInterval)
-                    putString("round_duration", roundDuration)
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("SAVE SETTINGS")
-        }
-
-        Text(
-            text = "Current Settings:\nSpeed: $speed\nMax Bugs: $maxBugs\nBonus Interval: $bonusInterval\nRound Duration: $roundDuration",
-            modifier = Modifier.padding(top = 16.dp)
-        )
-    }
-}
-
 
 @Composable
 fun NumberTextField(label: String, value: String, onValueChange: (String) -> Unit) {
@@ -524,3 +468,53 @@ fun calculateZodiac(day: Int, month: Int): String {
         else -> "Unknown"
     }
 }
+@Composable
+fun SettingsTab() {
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
+
+    val savedSpeed = prefs.getString("speed", "5") ?: "5"
+    val savedMaxBugs = prefs.getString("max_bugs", "10") ?: "10"
+    val savedBonusInterval = prefs.getString("bonus_interval", "3") ?: "3"
+    val savedRoundDuration = prefs.getString("round_duration", "60") ?: "60"
+
+    var speed by remember { mutableStateOf(savedSpeed) }
+    var maxBugs by remember { mutableStateOf(savedMaxBugs) }
+    var bonusInterval by remember { mutableStateOf(savedBonusInterval) }
+    var roundDuration by remember { mutableStateOf(savedRoundDuration) }
+
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .background(Color(0xFFacbfba))
+        .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Game Settings", style = MaterialTheme.typography.titleMedium)
+
+        NumberTextField("Game Speed", speed) { speed = it }
+        NumberTextField("Max Bugs on Screen", maxBugs) { maxBugs = it }
+        NumberTextField("Bonus Interval (seconds)", bonusInterval) { bonusInterval = it }
+        NumberTextField("Round Duration (seconds)", roundDuration) { roundDuration = it }
+
+        Button(
+            onClick = {
+                prefs.edit {
+                    putString("speed", speed)
+                    putString("max_bugs", maxBugs)
+                    putString("bonus_interval", bonusInterval)
+                    putString("round_duration", roundDuration)
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("SAVE SETTINGS")
+        }
+
+        Text(
+            text = "Current Settings:\nSpeed: $speed\nMax Bugs: $maxBugs\nBonus Interval: $bonusInterval\nRound Duration: $roundDuration",
+            modifier = Modifier.padding(top = 16.dp)
+        )
+    }
+}
+
+
