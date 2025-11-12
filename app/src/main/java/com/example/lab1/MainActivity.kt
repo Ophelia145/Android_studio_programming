@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -40,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import com.example.lab1.room.*
 
 
 data class Player(
@@ -64,7 +64,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun GameTabs() {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabTitles = listOf("Game", "Profile", "Rules", "Author", "Settings")
+    val tabTitles = listOf("Game", "Profile", "Rules", "Author", "Settings", "Records")
+
 
     Column {
         TabRow(selectedTabIndex = selectedTab) {
@@ -83,9 +84,60 @@ fun GameTabs() {
             2 -> RulesTab()
             3 -> AuthorsTab()
             4 -> SettingsTab()
+            5 -> RecordsTab()
         }
     }
 }
+@Composable
+fun RecordsTab() {
+    val context = LocalContext.current
+    val db = remember { GameDatabase.getDatabase(context) }
+    var scores by remember { mutableStateOf<List<ScoreEntity>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        scores = db.scoreDao().getAllScores()
+    }
+
+    LazyColumn(modifier = Modifier
+        .fillMaxSize()
+        .background(Color(0xFFacbfba))
+        .padding(16.dp)
+    ) {
+        item {
+            Text(
+                text = "🏆 Таблица рекордов",
+                fontSize = 20.sp,
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        items(scores) { score ->
+            val player = remember { mutableStateOf<PlayerEntity?>(null) }
+            LaunchedEffect(score.playerId) {
+                player.value = db.playerDao().getPlayerById(score.playerId)
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF7f8c8d))
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Text("Имя: ${player.value?.name ?: "???"}", color = Color.White)
+                    Text("Очки: ${score.score}", color = Color.White)
+                    Text("Сложность: ${score.difficulty}", color = Color.White)
+                    Text(
+                        "Дата: ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm").format(score.timestamp)}",
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun BugsGame() {
     val context = LocalContext.current
@@ -171,6 +223,38 @@ fun BugsGame() {
 
 
         if (timeLeft <= 0) {
+            val db = remember { GameDatabase.getDatabase(context) }
+            val sharedPrefs = context.getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+            val name = sharedPrefs.getString("name", "") ?: ""
+            val gender = sharedPrefs.getString("gender", "") ?: ""
+            val course = sharedPrefs.getString("course", "") ?: ""
+            val difficulty = sharedPrefs.getInt("difficulty", 1)
+            val birthDate = sharedPrefs.getString("birthDate", "") ?: ""
+            val zodiac = sharedPrefs.getString("zodiac", "") ?: ""
+
+            LaunchedEffect(Unit) {
+                // сохраняем игрока, если его нет
+                val playerId = db.playerDao().insertPlayer(
+                    PlayerEntity(
+                        name = name,
+                        gender = gender,
+                        course = course,
+                        difficulty = difficulty,
+                        birthDate = birthDate,
+                        zodiac = zodiac
+                    )
+                ).toInt()
+
+
+                db.scoreDao().insertScore(
+                    ScoreEntity(
+                        playerId = playerId,
+                        score = score,
+                        difficulty = difficulty
+                    )
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -178,13 +262,14 @@ fun BugsGame() {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Игра окончена!\nОчки: $score",
+                    text = "Игра окончена!\nОчки: $score\nРезультат сохранён!",
                     color = Color.White,
                     fontSize = 24.sp,
                     textAlign = TextAlign.Center
                 )
             }
         }
+
     }
 }
 
@@ -304,6 +389,35 @@ fun PlayerForm() {
 
     val courseOptions = listOf("1", "2", "3", "4", "5", "6")
     var expanded by remember { mutableStateOf(false) }
+    val db = remember { GameDatabase.getDatabase(context) }
+    var players by remember { mutableStateOf<List<PlayerEntity>>(emptyList()) }
+    var showPlayerList by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        players = db.playerDao().getAllPlayersOnce()
+    }
+
+    Button(onClick = { showPlayerList = !showPlayerList }) {
+        Text("Выбрать существующего игрока")
+    }
+
+    if (showPlayerList) {
+        LazyColumn {
+            items(players) { player ->
+                Button(onClick = {
+                    name = player.name
+                    gender = player.gender
+                    course = player.course
+                    difficulty = player.difficulty.toFloat()
+                    birthDate = player.birthDate
+                    zodiac = player.zodiac
+                    showPlayerList = false
+                }) {
+                    Text("Игрок: ${player.name} (${player.course} курс)")
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
