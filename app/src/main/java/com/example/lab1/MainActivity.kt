@@ -2,6 +2,7 @@ package com.example.lab1
 import android.content.Context
 import android.content.res.Resources
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -40,6 +41,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import com.example.lab1.room.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 
 data class Player(
@@ -54,18 +59,25 @@ data class Player(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+
+        val sharedPrefs = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+        val playerName = sharedPrefs.getString("name", null)
+
+        // Если профиля нет — сразу показываем вкладку Profile
+        val startTabIndex = if (playerName.isNullOrEmpty()) 1 else 0
+
         setContent {
-            GameTabs()
+            GameTabs(startTab = startTabIndex)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GameTabs() {
-    var selectedTab by remember { mutableStateOf(0) }
+fun GameTabs(startTab: Int = 0) {
+    var selectedTab by remember { mutableStateOf(startTab) }
     val tabTitles = listOf("Game", "Profile", "Rules", "Author", "Settings", "Records")
-
 
     Column {
         TabRow(selectedTabIndex = selectedTab) {
@@ -88,34 +100,44 @@ fun GameTabs() {
         }
     }
 }
+
+
 @Composable
 fun RecordsTab() {
     val context = LocalContext.current
     val db = remember { GameDatabase.getDatabase(context) }
     var scores by remember { mutableStateOf<List<ScoreEntity>>(emptyList()) }
-
     LaunchedEffect(Unit) {
-        scores = db.scoreDao().getAllScores()
+        try {
+            withContext(Dispatchers.IO) {
+                scores = db.scoreDao().getAllScores()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
-    LazyColumn(modifier = Modifier
-        .fillMaxSize()
-        .background(Color(0xFFacbfba))
-        .padding(16.dp)
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFacbfba))
+            .padding(16.dp)
     ) {
         item {
-            Text(
-                text = "🏆 Таблица рекордов",
-                fontSize = 20.sp,
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Text(" Таблица рекордов", fontSize = 20.sp, color = Color.White)
         }
 
         items(scores) { score ->
-            val player = remember { mutableStateOf<PlayerEntity?>(null) }
+            var player by remember { mutableStateOf<PlayerEntity?>(null) }
+
             LaunchedEffect(score.playerId) {
-                player.value = db.playerDao().getPlayerById(score.playerId)
+                try {
+                    withContext(Dispatchers.IO) {
+                        player = db.playerDao().getPlayerById(score.playerId)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             Card(
@@ -125,12 +147,14 @@ fun RecordsTab() {
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF7f8c8d))
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
-                    Text("Имя: ${player.value?.name ?: "???"}", color = Color.White)
+                    Text("Имя: ${player?.name ?: "Неизвестно"}", color = Color.White)
                     Text("Очки: ${score.score}", color = Color.White)
                     Text("Сложность: ${score.difficulty}", color = Color.White)
                     Text(
-                        "Дата: ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm").format(score.timestamp)}",
-                        color = Color.White
+                        "Дата: ${
+                            java.text.SimpleDateFormat("dd.MM.yyyy HH:mm")
+                                .format(score.timestamp)
+                        }", color = Color.White
                     )
                 }
             }
@@ -138,9 +162,11 @@ fun RecordsTab() {
     }
 }
 
+
 @Composable
 fun BugsGame() {
     val context = LocalContext.current
+    val db = remember { GameDatabase.getDatabase(context) }
     val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
     val speed = (prefs.getString("speed", "8") ?: "8").toInt()
     val maxBugs = (prefs.getString("max_bugs", "10") ?: "10").toInt()
@@ -158,7 +184,7 @@ fun BugsGame() {
         var spawnTime = 0L
         var timerTime = 0L
         while (timeLeft > 0) {
-            delay(16L) // ~60 FPS
+            delay(16L)
             bugs = bugs.map { it.move(speed / 60f) }
 
 
@@ -221,39 +247,11 @@ fun BugsGame() {
             Text("Время: $timeLeft с", color = Color.White)
         }
 
-
         if (timeLeft <= 0) {
-            val db = remember { GameDatabase.getDatabase(context) }
+            val context = LocalContext.current
             val sharedPrefs = context.getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
             val name = sharedPrefs.getString("name", "") ?: ""
-            val gender = sharedPrefs.getString("gender", "") ?: ""
-            val course = sharedPrefs.getString("course", "") ?: ""
             val difficulty = sharedPrefs.getInt("difficulty", 1)
-            val birthDate = sharedPrefs.getString("birthDate", "") ?: ""
-            val zodiac = sharedPrefs.getString("zodiac", "") ?: ""
-
-            LaunchedEffect(Unit) {
-                // сохраняем игрока, если его нет
-                val playerId = db.playerDao().insertPlayer(
-                    PlayerEntity(
-                        name = name,
-                        gender = gender,
-                        course = course,
-                        difficulty = difficulty,
-                        birthDate = birthDate,
-                        zodiac = zodiac
-                    )
-                ).toInt()
-
-
-                db.scoreDao().insertScore(
-                    ScoreEntity(
-                        playerId = playerId,
-                        score = score,
-                        difficulty = difficulty
-                    )
-                )
-            }
 
             Box(
                 modifier = Modifier
@@ -262,17 +260,55 @@ fun BugsGame() {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Игра окончена!\nОчки: $score\nРезультат сохранён!",
+                    text = "Игра окончена!\nОчки: $score",
                     color = Color.White,
                     fontSize = 24.sp,
                     textAlign = TextAlign.Center
                 )
             }
+
+            // 💾 Сохраняем результат 1 раз
+            LaunchedEffect(key1 = name + score) {
+                if (name.isNotBlank()) {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val allPlayers = db.playerDao().getAllPlayersOnce()
+                            val player = allPlayers.find { it.name == name }
+
+                            // если нет, создаем нового
+                            val playerId = player?.id ?: db.playerDao().insertPlayer(
+                                PlayerEntity(
+                                    name = name,
+                                    gender = sharedPrefs.getString("gender", "") ?: "",
+                                    course = sharedPrefs.getString("course", "") ?: "",
+                                    difficulty = difficulty,
+                                    birthDate = sharedPrefs.getString("birthDate", "") ?: "",
+                                    zodiac = sharedPrefs.getString("zodiac", "") ?: ""
+                                )
+                            ).toInt()
+
+                            db.scoreDao().insertScore(
+                                ScoreEntity(
+                                    playerId = playerId,
+                                    score = score,
+                                    difficulty = difficulty
+                                )
+                            )
+                        }
+                        Toast.makeText(context, "Результат сохранён", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(context, "Ошибка при сохранении результата", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(context, "Игрок не найден!", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
+
 
     }
 }
-
 
 data class Bug(
     val x: Float,
@@ -372,7 +408,7 @@ fun NumberTextField(label: String, value: String, onValueChange: (String) -> Uni
 fun PlayerForm() {
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
-
+    val scope = rememberCoroutineScope()
     val savedName = sharedPreferences.getString("name", "") ?: ""
     val savedGender = sharedPreferences.getString("gender", "") ?: ""
     val savedCourse = sharedPreferences.getString("course", "") ?: ""
@@ -393,8 +429,15 @@ fun PlayerForm() {
     var players by remember { mutableStateOf<List<PlayerEntity>>(emptyList()) }
     var showPlayerList by remember { mutableStateOf(false) }
 
+        //ettings → Apps → lab1 → Storage → Clear data
     LaunchedEffect(Unit) {
-        players = db.playerDao().getAllPlayersOnce()
+        try {
+            withContext(Dispatchers.IO) {
+                players = db.playerDao().getAllPlayersOnce()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     Button(onClick = { showPlayerList = !showPlayerList }) {
@@ -506,6 +549,11 @@ fun PlayerForm() {
 
         Button(
             onClick = {
+                if (name.isBlank() || gender.isBlank() || course.isBlank() || birthDate.isBlank()) {
+                    Toast.makeText(context, "Заполни все поля!", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
+
                 sharedPreferences.edit {
                     putString("name", name)
                     putString("gender", gender)
@@ -514,11 +562,36 @@ fun PlayerForm() {
                     putString("birthDate", birthDate)
                     putString("zodiac", zodiac)
                 }
+
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val existing = db.playerDao().getAllPlayersOnce().find { it.name == name }
+                        if (existing == null) {
+                            db.playerDao().insertPlayer(
+                                PlayerEntity(
+                                    name = name,
+                                    gender = gender,
+                                    course = course,
+                                    difficulty = difficulty.toInt(),
+                                    birthDate = birthDate,
+                                    zodiac = zodiac
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Ошибка при сохранении игрока", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("SAVE")
         }
+
+
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -527,7 +600,7 @@ fun PlayerForm() {
         )
 
         if (zodiac.isNotEmpty()) {
-            val zodiacDrawable = when (zodiac.lowercase()) {
+            val zodiacDrawable = when (zodiac.trim().lowercase()) {
                 "aries" -> R.drawable.aries
                 "taurus" -> R.drawable.taurus
                 "gemini" -> R.drawable.gemini
