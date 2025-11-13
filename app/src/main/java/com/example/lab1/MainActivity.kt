@@ -64,7 +64,6 @@ class MainActivity : ComponentActivity() {
         val sharedPrefs = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
         val playerName = sharedPrefs.getString("name", null)
 
-        // Если профиля нет — сразу показываем вкладку Profile
         val startTabIndex = if (playerName.isNullOrEmpty()) 1 else 0
 
         setContent {
@@ -72,12 +71,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameTabs(startTab: Int = 0) {
     var selectedTab by remember { mutableStateOf(startTab) }
     val tabTitles = listOf("Game", "Profile", "Rules", "Author", "Settings", "Records")
+    val context = LocalContext.current
+    val db = remember { GameDatabase.getDatabase(context) }
 
     Column {
         TabRow(selectedTabIndex = selectedTab) {
@@ -91,19 +91,19 @@ fun GameTabs(startTab: Int = 0) {
         }
 
         when (selectedTab) {
-            0 -> BugsGame()
-            1 -> PlayerForm()
+            0 -> BugsGame(db)
+            1 -> PlayerForm(db)
             2 -> RulesTab()
             3 -> AuthorsTab()
             4 -> SettingsTab()
-            5 -> RecordsTab()
+            5 -> RecordsTab(db)
         }
     }
 }
 
 
 @Composable
-fun RecordsTab() {
+fun RecordsTab(db: GameDatabase) {
     val context = LocalContext.current
     val db = remember { GameDatabase.getDatabase(context) }
     var scores by remember { mutableStateOf<List<ScoreEntity>>(emptyList()) }
@@ -164,7 +164,7 @@ fun RecordsTab() {
 
 
 @Composable
-fun BugsGame() {
+fun BugsGame(db: GameDatabase) {
     val context = LocalContext.current
     val db = remember { GameDatabase.getDatabase(context) }
     val prefs = context.getSharedPreferences("GameSettings", Context.MODE_PRIVATE)
@@ -267,7 +267,7 @@ fun BugsGame() {
                 )
             }
 
-            // 💾 Сохраняем результат 1 раз
+
             LaunchedEffect(key1 = name + score) {
                 if (name.isNotBlank()) {
                     try {
@@ -275,7 +275,6 @@ fun BugsGame() {
                             val allPlayers = db.playerDao().getAllPlayersOnce()
                             val player = allPlayers.find { it.name == name }
 
-                            // если нет, создаем нового
                             val playerId = player?.id ?: db.playerDao().insertPlayer(
                                 PlayerEntity(
                                     name = name,
@@ -405,7 +404,7 @@ fun NumberTextField(label: String, value: String, onValueChange: (String) -> Uni
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlayerForm() {
+fun PlayerForm(db: GameDatabase) {
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
     val scope = rememberCoroutineScope()
@@ -429,7 +428,6 @@ fun PlayerForm() {
     var players by remember { mutableStateOf<List<PlayerEntity>>(emptyList()) }
     var showPlayerList by remember { mutableStateOf(false) }
 
-        //ettings → Apps → lab1 → Storage → Clear data
     LaunchedEffect(Unit) {
         try {
             withContext(Dispatchers.IO) {
