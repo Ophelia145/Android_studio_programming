@@ -2,7 +2,7 @@
     <string name="app_name">lab1</string>
         <string name="rules">
             ПРАВИЛА ИГРЫ:
-       За попадание +10 очков, за промах -10
+       За попадание в насекомое +10 очков, за промах -10!
     </string>
 
 </resources>
