@@ -110,7 +110,7 @@ fun RecordsTab(db: GameDatabase) {
     LaunchedEffect(Unit) {
         try {
             withContext(Dispatchers.IO) {
-                scores = db.scoreDao().getAllScores()
+                scores = db.scoreDao().getTopScores()
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -267,7 +267,6 @@ fun BugsGame(db: GameDatabase) {
                 )
             }
 
-
             LaunchedEffect(key1 = name + score) {
                 if (name.isNotBlank()) {
                     try {
@@ -286,13 +285,19 @@ fun BugsGame(db: GameDatabase) {
                                 )
                             ).toInt()
 
-                            db.scoreDao().insertScore(
-                                ScoreEntity(
-                                    playerId = playerId,
-                                    score = score,
-                                    difficulty = difficulty
+                            val existingScore = db.scoreDao().getScoreByPlayerId(playerId)
+                            if (existingScore == null) {
+                                db.scoreDao().insertScore(
+                                    ScoreEntity(
+                                        playerId = playerId,
+                                        score = score,
+                                        difficulty = difficulty
+                                    )
                                 )
-                            )
+                            } else if (score > existingScore.score) {
+                                db.scoreDao().updateScore(existingScore.id, score)
+                            }
+
                         }
                         Toast.makeText(context, "Результат сохранён", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
@@ -304,8 +309,6 @@ fun BugsGame(db: GameDatabase) {
                 }
             }
         }
-
-
     }
 }
 
@@ -345,14 +348,9 @@ data class Bug(
         return copy(x = newX, y = newY, dx = newDx, dy = newDy)
     }
 
-
-
     val xPx get() = x * Resources.getSystem().displayMetrics.density
     val yPx get() = y * Resources.getSystem().displayMetrics.density
 }
-
-
-
 
 @Composable
 fun RulesTab() {

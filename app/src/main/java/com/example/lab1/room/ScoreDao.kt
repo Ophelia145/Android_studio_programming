@@ -13,4 +13,16 @@ interface ScoreDao {
 
     @Query("SELECT * FROM scores ORDER BY score DESC LIMIT 50")
     suspend fun getAllScores(): List<ScoreEntity>
+
+    @Query("SELECT * FROM scores WHERE playerId = :playerId LIMIT 1")
+    suspend fun getScoreByPlayerId(playerId: Int): ScoreEntity?
+
+    @Query("UPDATE scores SET score = :newScore WHERE id = :scoreId")
+    suspend fun updateScore(scoreId: Int, newScore: Int)
+
+    @Query("SELECT * FROM scores ORDER BY score DESC LIMIT 5")
+    suspend fun getTopScores(): List<ScoreEntity>
+
+
 }
+

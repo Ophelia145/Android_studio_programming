@@ -16,3 +16,4 @@ interface PlayerDao {
     @Query("SELECT * FROM players")
     suspend fun getAllPlayersOnce(): List<PlayerEntity>
 }
+
